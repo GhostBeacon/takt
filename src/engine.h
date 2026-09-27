@@ -9,6 +9,7 @@ constexpr int NT = 8;              // Spuren
 constexpr int NS = 16;             // Steps
 constexpr int NP = 8;              // Patterns
 constexpr uint32_t MAGIC = 0xD5A70003;
+constexpr int CHAIN_MAX = 16;      // Song-Modus: Plaetze in der Pattern-Kette
 
 enum { BD, SD, CP, CH, OH, LT, HT, CB };
 static const char* TRACK_NAMES[NT] = {"BD", "SD", "CP", "CH", "OH", "LT", "HT", "CB"};
@@ -25,6 +26,9 @@ struct Song {
   uint16_t bpm;
   uint8_t swing;   // 50..75 %
   uint8_t vol;     // 0..255
+  uint8_t chainLen;                 // Song-Modus: Anzahl belegter Plaetze
+  uint8_t chainPat[CHAIN_MAX];      // Pattern 0..7 je Platz
+  uint8_t chainRep[CHAIN_MAX];      // Wiederholungen 1..8 je Platz
 };
 
 static Song song;
@@ -36,6 +40,10 @@ static volatile int curPat = 0;
 static volatile int pendingPat = -1;
 static volatile uint32_t padMask = 0;     // Vorhör-Trigger aus der UI
 static volatile uint8_t uiStep[NT];
+static volatile bool songMode = false;    // Kette statt Einzel-Pattern abspielen
+static volatile int chainPos = 0;         // aktueller Platz in der Kette
+static volatile int chainBar = 0;         // gespielte Takte auf diesem Platz
+static volatile int songJump = -1;        // UI: an der naechsten Eins zu diesem Platz springen
 
 // ---------------------------------------------------------------- DSP-Helfer
 static float sineLUT[1024];
@@ -156,16 +164,43 @@ static Ratchet rat[NT];
 static int gstep = 0;
 static int tpos[NT];
 static double toNext = 0;
+static bool firstStep = true;             // erster Step nach Start zaehlt nicht als Taktende
 
 static void resetPositions() {
   gstep = 0;
   for (int t = 0; t < NT; t++) { tpos[t] = 0; rat[t].left = 0; }
 }
 
+// Song-Modus: am Taktanfang Kette weiterschalten (oder an einen Platz springen)
+static void songBar() {
+  int n = song.chainLen;
+  if (n <= 0) return;
+  int prev = curPat;
+  if (songJump >= 0) {
+    chainPos = songJump < n ? songJump : 0;
+    chainBar = 0;
+    songJump = -1;
+  } else if (!firstStep) {
+    if (chainPos >= n) chainPos = 0;
+    if (++chainBar >= song.chainRep[chainPos]) {
+      chainBar = 0;
+      chainPos = (chainPos + 1) % n;             // am Ende von vorn
+    }
+  }
+  if (chainPos >= n) chainPos = 0;
+  curPat = song.chainPat[chainPos] & 7;
+  pendingPat = -1;
+  if (curPat != prev || chainBar == 0) for (int t = 0; t < NT; t++) tpos[t] = 0;
+}
+
 static void doStep() {
-  if (gstep == 0 && pendingPat >= 0) {           // Patternwechsel am Taktanfang
-    curPat = pendingPat; pendingPat = -1;
-    for (int t = 0; t < NT; t++) tpos[t] = 0;
+  if (gstep == 0) {
+    if (songMode && song.chainLen > 0) songBar();
+    else if (pendingPat >= 0) {                  // Patternwechsel am Taktanfang
+      curPat = pendingPat; pendingPat = -1;
+      for (int t = 0; t < NT; t++) tpos[t] = 0;
+    }
+    firstStep = false;
   }
   Pattern& P = song.pat[curPat];
   double sl = (double)SR * 60.0 / song.bpm / 4.0;
@@ -205,10 +240,15 @@ static void render(int16_t* out, int n) {
   int c = cmd;
   if (c) {
     cmd = 0;
-    if (c == 1) { resetPositions(); toNext = 0; playing = true; }
+    if (c == 1) { resetPositions(); toNext = 0; firstStep = true; playing = true; }
     else { playing = false; for (int t = 0; t < NT; t++) rat[t].left = 0; }
   }
   if (!playing && pendingPat >= 0) { curPat = pendingPat; pendingPat = -1; }
+  if (!playing && songJump >= 0 && songMode && song.chainLen > 0) {  // gestoppt: Platz sofort anzeigen
+    chainPos = songJump < song.chainLen ? songJump : 0;
+    chainBar = 0;
+    curPat = song.chainPat[chainPos] & 7;
+  }
 
   uint32_t pads = __atomic_exchange_n(&padMask, 0u, __ATOMIC_SEQ_CST);
   for (int t = 0; t < NT; t++) if (pads & (1u << t)) trigger(t, 0.9f);
@@ -258,4 +298,8 @@ static void defaultSong() {
   b.s[CH][14].rat = 3;
   b.s[CB][0].on = 1; b.s[CB][3].on = 1; b.s[CB][6].on = 1; b.len[CB] = 7;
   b.s[LT][13].on = 1; b.s[HT][15].on = 1;
+  // Demo-Kette: 3x Grundbeat, 1x Variation
+  song.chainLen = 2;
+  song.chainPat[0] = 0; song.chainRep[0] = 3;
+  song.chainPat[1] = 1; song.chainRep[1] = 1;
 }

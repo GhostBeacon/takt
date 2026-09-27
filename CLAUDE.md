@@ -27,7 +27,7 @@ Ausgabe über Lautsprecher und 3,5-mm-Klinke. Kein WLAN, keine Cloud, keine Samp
 - Nutzer laden per M5Launcher **OTA → Favorite** von `https://github.com/GhostBeacon/takt/releases/latest/download/takt.bin`; Ablage auf SD macht der Launcher
 - Getestet wird nur über diese Releases auf dem Gerät (kein USB-Flashen im Arbeitsablauf)
 - **Größe klein halten** (aktuell ~0,53 MB): Der Launcher hält mehrere Apps gleichzeitig und legt die App-Partition passend zur Dateigröße an. Daher **kein WLAN/BT** in der Firmware (OTA macht der Launcher), keine eigene SPIFFS/FAT-Partition (Launcher würde ≥448 KB reservieren). Größe steht in der Workflow-Zusammenfassung.
-- NVS (20 KB) wird mit Launcher, WLAN-Daten und anderen Apps geteilt: eigener Namespace `takt`, gepackt (1 Byte/Step) in kleinen Blobs `cfg` + `p0`…`p7` (~1,2 KB). Ein einzelner 3,2-KB-Blob schlug auf dem Gerät fehl (v1.0.1). Fehlermeldung zeigt freie Bytes (`nvs_get_stats`).
+- NVS (20 KB) wird mit Launcher, WLAN-Daten und anderen Apps geteilt: eigener Namespace `takt`, gepackt (1 Byte/Step) in kleinen Blobs `cfg` + `p0`…`p7` + `chn` (Song-Kette, 18 B) (~1,2 KB). Ein einzelner 3,2-KB-Blob schlug auf dem Gerät fehl (v1.0.1). Fehlermeldung zeigt freie Bytes (`nvs_get_stats`).
 
 ## Projektstruktur
 ```
@@ -49,7 +49,15 @@ Hardware-Test v1.0.1: Darstellung, Demo-Beat, Klang (keine Verzerrung), 250 BPM 
 ## Ansichten
 - **Startbildschirm** (2,6 s, jede Taste überspringt): „TAKT“ groß (Spleen ×4, Magenta-Schatten), eine Step-Reihe läuft durch, Version unten
 - **Raster** (Hauptansicht)
-- **Hilfe**: `?` (Shift+/) oder Esc (`` ` ``) öffnet; `;` `.` Zeile, `,` `/` Seite, Space Play/Stop, Esc/Del/Enter zurück
+- **Hilfe**: `?` (Shift+/) oder Esc (`` ` ``) öffnet; `;` `.` Zeile, `,` `/` Seite, Space Play/Stop, Esc/Del/Enter zurück (zur Ansicht, aus der sie geöffnet wurde)
+- **Song-Ansicht** (`\`): Kette mit 16 Plätzen in 2 Reihen à 8 (27×40 px), je Platz „P3“ + „×4“; laufender Platz Magenta-Kante oben + cyaner Fortschrittsbalken; Cursor cyaner Rahmen; „+“-Platz zum Anhängen
+
+## Song-Modus
+- Kette `chainLen`, `chainPat[16]`, `chainRep[16]` (1–8 Takte) im `Song`; `songMode` an/aus
+- Takt = 16 globale Steps (`gstep`). An jeder Eins ruft `doStep` → `songBar()`: zählt Takte, schaltet weiter, am Ende von vorn. `firstStep` verhindert, dass der Start als Taktende zählt.
+- UI → Audio: `songJump` (Platz, ab dem an der nächsten Eins gespielt wird; bei Stopp sofort)
+- Manueller Pattern-Wechsel (Fn+1–8, 9/0) beendet den Song-Modus
+- Tasten Song-Ansicht: Pfeile (`;` `.` `,` `/`), 1–8 setzen/anhängen, Shift+1–8 einfügen, `-`/`=` Takte, Del löschen, Tab an/aus, Space Play ab Platz, Esc/`\` zurück, Shift+`/` Hilfe
 
 ## Architektur
 - **Audio-Task** auf Core 0 (Priorität hoch): rendert Blöcke à 256 Samples mono, 44,1 kHz, int16, und reicht sie per `M5.Speaker.playRaw(..., stop_current_sound=false)` in eine Warteschlange (3 Puffer rotierend). Der Sequencer-Takt ist **sample-genau** im Render-Loop, nicht über `millis()`.
@@ -111,6 +119,7 @@ Master: Softclip-Sättigung, Lautstärke.
 | Del / Fn+Del | Spur leeren / ganzes Pattern leeren |
 | Enter | Song speichern |
 | `?` / Esc | Hilfe |
+| `\` | Song-Ansicht |
 
 Hinweis: Mit Shift liefert die Tastatur andere Zeichen (`!` statt `1` usw.) – diese auf die Grundtaste zurückmappen. Tastendrücke nur bei **Flanke** (neu gedrückt) auslösen, nicht bei gehaltener Taste.
 
@@ -147,7 +156,6 @@ Hinweis: Mit Shift liefert die Tastatur andere Zeichen (`!` statt `1` usw.) – 
 - README.md, ANLEITUNG.md und help.h bei jeder Änderung der Bedienung gemeinsam pflegen.
 
 ## Mögliche Erweiterungen (später)
-- Song-Modus (Pattern-Kette)
 - Pro-Step-Parameter-Locks (Tune/Decay je Step)
 - Master-Effekte: Delay, Bitcrusher, Filter mit Resonanz
 - IMU: Kippen steuert Filter oder Stutter/Beat-Repeat

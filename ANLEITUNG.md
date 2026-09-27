@@ -106,6 +106,42 @@ Läuft die Wiedergabe, wird der Wechsel erst **auf der nächsten Eins** übernom
 
 Tipp: Pattern kopieren (`O`), zum nächsten Pattern wechseln (`0`), einfügen (`P`) und dort eine Variation bauen.
 
+## Song-Modus (automatische Abfolge)
+
+Im Song-Modus spielt Takt eine **Kette** von Patterns automatisch nacheinander ab, z. B. 4× Grundbeat, 4× Strophe, 1× Fill, 4× Refrain. Die Kette hat bis zu 16 Plätze. Jeder Platz besteht aus einem Pattern und einer Anzahl Takte (1–8). Am Ende beginnt die Kette von vorn.
+
+**`\`** (Backslash, rechts neben `]`) öffnet die Song-Ansicht:
+
+```
+ Song  Modus an                 13 Takte
+ ─────────────────────────────────────
+ ┌──┐ ┌──┐ ┌──┐ ┌──┐ ┌┄┄┐
+ │P1│ │P2│ │P4│ │P3│ │ +│               ← Plätze 1–8
+ │×4│ │×4│ │×1│ │×4│ └┄┄┘
+ └──┘ └──┘ └──┘ └──┘
+                                        ← Plätze 9–16
+ Platz 3: Pattern 4, 1 Takt
+ ─────────────────────────────────────
+```
+
+| Taste | Wirkung |
+|---|---|
+| `;` `.` `,` `/` (Pfeile) | Platz wählen (cyaner Rahmen) |
+| `1`–`8` | Pattern für den gewählten Platz setzen; auf dem **+**-Platz: anhängen |
+| Shift + `1`–`8` | neuen Platz vor dem gewählten einfügen |
+| `-` / `=` | Takte für diesen Platz − / + |
+| Del | Platz löschen |
+| Tab | Song-Modus an / aus (startet an der nächsten Eins ab dem gewählten Platz) |
+| Space | Play / Stop – startet ab dem gewählten Platz |
+| Enter | speichern |
+| Esc oder `\` | zurück zum Raster |
+
+Der Platz, der gerade läuft, hat oben eine Magenta-Kante; der cyane Balken unten zeigt, wie viele seiner Takte schon gespielt sind.
+
+Im Raster steht bei aktivem Song-Modus oben z. B. **`S2 P3 1/4`**: Platz 2 der Kette, Pattern 3, Takt 1 von 4. Space im Raster startet die Kette am Anfang. Du kannst währenddessen Steps bearbeiten – die Änderungen landen im gerade laufenden Pattern.
+
+Wählst du von Hand ein Pattern (Fn + `1`–`8`, `9`, `0`), endet der Song-Modus und das gewählte Pattern läuft als Loop weiter.
+
 ## Tempo, Swing, Lautstärke
 
 | Taste | Wirkung |
@@ -118,7 +154,7 @@ Tipp: Pattern kopieren (`O`), zum nächsten Pattern wechseln (`0`), einfügen (`
 
 ## Speichern
 
-**Enter** speichert alle 8 Patterns, die Spurwerte, Tempo, Swing und Lautstärke im internen Speicher des Cardputers. Beim nächsten Start wird der Song automatisch geladen. Nicht gespeicherte Änderungen gehen beim Ausschalten verloren.
+**Enter** speichert alle 8 Patterns, die Song-Kette (samt An/Aus), die Spurwerte, Tempo, Swing und Lautstärke im internen Speicher des Cardputers. Beim nächsten Start wird der Song automatisch geladen. Nicht gespeicherte Änderungen gehen beim Ausschalten verloren.
 
 Der interne Speicher wird mit dem M5Launcher und anderen Apps geteilt. Takt braucht davon nur gut 1 KB. Erscheint trotzdem **„Fehler: Speicher voll“** oder **„Fehler beim Speichern“**, zeigt die Meldung, wie viel Platz noch frei war – bitte diesen Wert mit einem Issue melden.
 
@@ -131,4 +167,4 @@ Der interne Speicher wird mit dem M5Launcher und anderen Apps geteilt. Takt brau
 | `;` / `.` | eine Zeile hoch / runter |
 | `,` / `/` | eine Seite zurück / vor |
 | Space | Play / Stop (läuft weiter, während die Hilfe offen ist) |
-| Esc, Del oder Enter | zurück zum Raster |
+| Esc, Del oder Enter | zurück (zum Raster oder zur Song-Ansicht) |
