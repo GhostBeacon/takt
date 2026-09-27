@@ -12,6 +12,7 @@ Die Firmware ist bewusst klein (~0,5 MB), damit sie im Launcher neben anderen Ap
 - **Polymeter**: eigene Länge 1–16 je Spur
 - Tempo 40–250 BPM, Swing 50–75 %
 - Pattern-Wechsel im Spiel wird **auf der Eins** übernommen (Anzeige `P1>2`)
+- **Song-Modus**: Kette aus bis zu 16 Plätzen (Pattern × 1–8 Takte) läuft automatisch ab
 - **Euklid-Generator**, **Zufallsgenerator**, Pattern kopieren/einfügen
 - Song im internen Speicher sichern (Enter); beim Start wird er wieder geladen
 - Startbildschirm und **eingebaute Hilfe** mit Tastenbelegung (`?` oder Esc)
@@ -69,11 +70,12 @@ Sind mehrere Apps installiert, startet eine Ziffer auf dem Launcher-Startbildsch
 | Tab | Spur zufällig füllen |
 | `O` / `P` | Pattern kopieren / einfügen |
 | Del / Fn + Del | Spur leeren / ganzes Pattern leeren |
+| `\` | Song-Ansicht: Pattern-Kette bearbeiten, Tab = Song-Modus an/aus |
 | Enter | Song speichern |
 
 ## Anzeige
 
-- **Kopfzeile:** Play-Symbol, Pattern (Magenta, `P1>2` = Wechsel vorgemerkt), Tempo, Swing, Lautstärke
+- **Kopfzeile:** Play-Symbol, Pattern (Magenta, `P1>2` = Wechsel vorgemerkt; im Song-Modus `S2 P3 1/4` = Platz, Pattern, Takt), Tempo, Swing, Lautstärke
 - **Raster:** 8 Spuren × 16 Steps; hellere Zellen markieren die Viertel. Grauer Step = an, heller Step = Accent, kleineres Kästchen = geringere Wahrscheinlichkeit, Punkte = Ratchets. Nur umrandete Zellen liegen jenseits der Spurlänge. Der cyane Rahmen ist die Abspielposition – je Spur, wegen Polymeter.
 - **Aktive Spur:** Magenta-Kante links; gemutete Spuren dunkelgrau
 - **Fußzeile:** Parameter der aktiven Spur oder eine kurze Meldung
