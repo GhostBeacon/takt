@@ -27,7 +27,7 @@ Ausgabe über Lautsprecher und 3,5-mm-Klinke. Kein WLAN, keine Cloud, keine Samp
 - Nutzer laden per M5Launcher **OTA → Favorite** von `https://github.com/GhostBeacon/takt/releases/latest/download/takt.bin`; Ablage auf SD macht der Launcher
 - Getestet wird nur über diese Releases auf dem Gerät (kein USB-Flashen im Arbeitsablauf)
 - **Größe klein halten** (aktuell ~0,53 MB): Der Launcher hält mehrere Apps gleichzeitig und legt die App-Partition passend zur Dateigröße an. Daher **kein WLAN/BT** in der Firmware (OTA macht der Launcher), keine eigene SPIFFS/FAT-Partition (Launcher würde ≥448 KB reservieren). Größe steht in der Workflow-Zusammenfassung.
-- NVS wird mit Launcher und anderen Apps geteilt: eigener Namespace `takt`, nur ein Blob (~3,2 KB)
+- NVS (20 KB) wird mit Launcher, WLAN-Daten und anderen Apps geteilt: eigener Namespace `takt`, gepackt (1 Byte/Step) in kleinen Blobs `cfg` + `p0`…`p7` (~1,2 KB). Ein einzelner 3,2-KB-Blob schlug auf dem Gerät fehl (v1.0.1). Fehlermeldung zeigt freie Bytes (`nvs_get_stats`).
 
 ## Projektstruktur
 ```
@@ -35,14 +35,21 @@ platformio.ini
 src/
   main.cpp      – Setup, UI-Loop, Tastatur, Display, Speichern
   engine.h      – Datenmodell, DSP (Stimmen), Sequencer, Audio-Render
+  help.h        – Text der eingebauten Hilfe
   fonts.c/.h    – Pixelschrift Spleen 6x12 (u8g2-Format, aus Krähenauge)
 .github/workflows/firmware.yml
 docs/LICENSE-spleen.txt
 CLAUDE.md
-README.md       – Bedienungsanleitung für Nutzer
+README.md       – Überblick, Installation, Kurzanleitung
+ANLEITUNG.md    – ausführliche Anleitung (Inhalt deckungsgleich mit help.h halten)
 LICENSE
 ```
-Der Entwurf kompiliert ohne Warnungen; Hardware-Test über das erste Release steht noch aus.
+Hardware-Test v1.0.1: Darstellung, Demo-Beat, Klang (keine Verzerrung), 250 BPM ohne Aussetzer, Tastatur, Parallelbetrieb mit 2 weiteren Apps ok. Speichern schlug fehl → Format umgestellt (s. o.).
+
+## Ansichten
+- **Startbildschirm** (2,6 s, jede Taste überspringt): „TAKT“ groß (Spleen ×4, Magenta-Schatten), eine Step-Reihe läuft durch, Version unten
+- **Raster** (Hauptansicht)
+- **Hilfe**: `?` (Shift+/) oder Esc (`` ` ``) öffnet; `;` `.` Zeile, `,` `/` Seite, Space Play/Stop, Esc/Del/Enter zurück
 
 ## Architektur
 - **Audio-Task** auf Core 0 (Priorität hoch): rendert Blöcke à 256 Samples mono, 44,1 kHz, int16, und reicht sie per `M5.Speaker.playRaw(..., stop_current_sound=false)` in eine Warteschlange (3 Puffer rotierend). Der Sequencer-Takt ist **sample-genau** im Render-Loop, nicht über `millis()`.
@@ -103,6 +110,7 @@ Master: Softclip-Sättigung, Lautstärke.
 | `O` / `P` | Pattern kopieren / einfügen |
 | Del / Fn+Del | Spur leeren / ganzes Pattern leeren |
 | Enter | Song speichern |
+| `?` / Esc | Hilfe |
 
 Hinweis: Mit Shift liefert die Tastatur andere Zeichen (`!` statt `1` usw.) – diese auf die Grundtaste zurückmappen. Tastendrücke nur bei **Flanke** (neu gedrückt) auslösen, nicht bei gehaltener Taste.
 
@@ -135,8 +143,8 @@ Hinweis: Mit Shift liefert die Tastatur andere Zeichen (`!` statt `1` usw.) – 
 - Zuerst den Entwurf kompilieren und Fehler beheben, dann Features einzeln prüfen.
 - API-Details von M5Unified/M5Cardputer im installierten Library-Quellcode (`.pio/libdeps/`) nachsehen statt zu raten – insbesondere `Keyboard_Class::KeysState` (Felder `word`, `fn`, `shift`, `ctrl`, `alt`/`opt`, `del`, `enter`, `tab`, `space`) und `Speaker_Class::playRaw` / `isPlaying`.
 - DSP-Code im Audio-Pfad performant halten: Sinus über Lookup-Tabelle, keine `powf/expf` pro Sample (nur beim Triggern).
-- Kleine, nachvollziehbare Commits. Kommentare und UI-Texte auf Deutsch (UI ohne Umlaute, da Standardfont).
-- README.md mit Kurzanleitung und Tastenbelegung pflegen.
+- Kleine, nachvollziehbare Commits. Kommentare und UI-Texte auf Deutsch. Umlaute in der UI sind erlaubt (Spleen enthält Latin-1, Quelltext UTF-8).
+- README.md, ANLEITUNG.md und help.h bei jeder Änderung der Bedienung gemeinsam pflegen.
 
 ## Mögliche Erweiterungen (später)
 - Song-Modus (Pattern-Kette)
