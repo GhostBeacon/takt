@@ -45,6 +45,7 @@ ANLEITUNG.md    – ausführliche Anleitung (Inhalt deckungsgleich mit help.h ha
 LICENSE
 ```
 Hardware-Test v1.0.1: Darstellung, Demo-Beat, Klang (keine Verzerrung), 250 BPM ohne Aussetzer, Tastatur, Parallelbetrieb mit 2 weiteren Apps ok. Speichern schlug fehl → Format umgestellt (s. o.).
+Hardware-Test v1.0.3: Speichern/Laden (inkl. Kette) ok, Song-Modus läuft. Damit sind alle Abnahmekriterien erfüllt.
 
 ## Ansichten
 - **Startbildschirm** (2,6 s, jede Taste überspringt): „TAKT“ groß (Spleen ×4, Magenta-Schatten), eine Step-Reihe läuft durch, Version unten
