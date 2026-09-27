@@ -1,8 +1,10 @@
 // Takt – Drum Machine fuer den M5Stack Cardputer ADV
 #include <M5Cardputer.h>
 #include <Preferences.h>
+#include <nvs.h>
 #include "engine.h"
 #include "fonts.h"
+#include "help.h"
 
 #ifndef FW_VERSION
 #define FW_VERSION "dev"
@@ -15,6 +17,13 @@ static int curTrack = 0;
 static Pattern clip;
 static bool hasClip = false;
 static char msg[48] = "";
+
+enum class Mode { Boot, Grid, Help };
+static Mode mode = Mode::Boot;
+static uint32_t bootStart = 0;
+static constexpr uint32_t BOOT_MS = 2600;
+static int helpTop = 0;
+static constexpr int HELP_ROWS = 8;
 static uint32_t msgUntil = 0;
 
 static const lgfx::U8g2font FONT(spleen6x12);
@@ -52,20 +61,78 @@ static void audioTask(void*) {
 }
 
 // ---------------------------------------------------------------- Speichern
-static void showMsg(const char* m) { strncpy(msg, m, sizeof(msg) - 1); msgUntil = millis() + 1400; }
+static void showMsg(const char* m, uint32_t ms = 1400) { strncpy(msg, m, sizeof(msg) - 1); msgUntil = millis() + ms; }
+
+// Der NVS-Bereich (20 KB) wird mit dem Launcher und anderen Apps geteilt. Deshalb gepackt
+// (1 Byte pro Step) und in kleinen Bloecken: "cfg" + je Pattern "p0".."p7" (~1,2 KB gesamt).
+struct SavedCfg { uint32_t magic; TrackParams tp[NT]; uint16_t bpm; uint8_t swing, vol; };
+struct SavedPat { uint8_t s[NT][NS]; uint8_t len[NT]; };           // Bit 0-1 on, 2-3 prob, 4-5 rat-1
+static constexpr uint32_t SAVE_MAGIC = 0x54414B01;                // "TAK" + Format 1
+
+static void packPattern(const Pattern& p, SavedPat& o) {
+  for (int t = 0; t < NT; t++) {
+    o.len[t] = p.len[t];
+    for (int s = 0; s < NS; s++) {
+      const Step& st = p.s[t][s];
+      o.s[t][s] = (st.on & 3) | ((st.prob & 3) << 2) | (((st.rat - 1) & 3) << 4);
+    }
+  }
+}
+
+static void unpackPattern(const SavedPat& o, Pattern& p) {
+  for (int t = 0; t < NT; t++) {
+    p.len[t] = (o.len[t] >= 1 && o.len[t] <= NS) ? o.len[t] : NS;
+    for (int s = 0; s < NS; s++) {
+      uint8_t v = o.s[t][s];
+      p.s[t][s] = {(uint8_t)((v & 3) > 2 ? 0 : (v & 3)), (uint8_t)((v >> 2) & 3), (uint8_t)(((v >> 4) & 3) + 1)};
+    }
+  }
+}
 
 static void saveSong() {
-  prefs.begin("takt", false);
-  size_t n = prefs.putBytes("song", &song, sizeof(Song));
+  char b[48];
+  if (!prefs.begin("takt", false)) {
+    nvs_stats_t st{};
+    nvs_get_stats(nullptr, &st);
+    snprintf(b, sizeof(b), "Fehler: Speicher voll (frei %u B)", (unsigned)(st.free_entries * 32));
+    showMsg(b, 5000);
+    return;
+  }
+  prefs.remove("song");                                           // alter 3,2-KB-Block aus v1.0.1, falls vorhanden
+  SavedCfg c{SAVE_MAGIC, {}, song.bpm, song.swing, song.vol};
+  memcpy(c.tp, song.tp, sizeof(c.tp));
+  bool ok = true;
+  for (int i = 0; ok && i < NP; i++) {
+    SavedPat sp;
+    packPattern(song.pat[i], sp);
+    char key[4] = {'p', (char)('0' + i), 0};
+    ok = prefs.putBytes(key, &sp, sizeof(sp)) == sizeof(sp);
+  }
+  if (ok) ok = prefs.putBytes("cfg", &c, sizeof(c)) == sizeof(c);   // zuletzt: cfg markiert einen vollstaendigen Song
   prefs.end();
-  showMsg(n == sizeof(Song) ? "Gespeichert" : "Speichern fehlgeschlagen");
+  if (ok) { showMsg("Gespeichert"); return; }
+  nvs_stats_t st{};
+  nvs_get_stats(nullptr, &st);
+  snprintf(b, sizeof(b), "Fehler beim Speichern (frei %u B)", (unsigned)(st.free_entries * 32));
+  showMsg(b, 5000);
 }
 
 static void loadSong() {
-  prefs.begin("takt", true);
-  bool ok = prefs.getBytesLength("song") == sizeof(Song) && prefs.getBytes("song", &song, sizeof(Song)) == sizeof(Song);
+  defaultSong();
+  if (!prefs.begin("takt", true)) return;
+  SavedCfg c;
+  if (prefs.getBytes("cfg", &c, sizeof(c)) == sizeof(c) && c.magic == SAVE_MAGIC) {
+    memcpy(song.tp, c.tp, sizeof(c.tp));
+    song.bpm = constrain(c.bpm, 40, 250);
+    song.swing = constrain(c.swing, 50, 75);
+    song.vol = c.vol;
+    for (int i = 0; i < NP; i++) {
+      SavedPat sp;
+      char key[4] = {'p', (char)('0' + i), 0};
+      if (prefs.getBytes(key, &sp, sizeof(sp)) == sizeof(sp)) unpackPattern(sp, song.pat[i]);
+    }
+  }
   prefs.end();
-  if (!ok || song.magic != MAGIC) defaultSong();
 }
 
 // ---------------------------------------------------------------- Pattern-Werkzeuge
@@ -182,6 +249,35 @@ static void onKey(char c, const Mods& m) {
   }
 }
 
+static void leaveBoot() {
+  mode = Mode::Grid;
+  showMsg("Takt " FW_VERSION "  ·  ? = Hilfe", 3000);
+}
+
+static void helpKey(char c) {
+  int maxTop = HELP_LINES > HELP_ROWS ? HELP_LINES - HELP_ROWS : 0;
+  switch (c) {
+    case ';': helpTop--; break;                        // Pfeil hoch
+    case '.': helpTop++; break;                        // Pfeil runter
+    case ',': helpTop -= HELP_ROWS; break;             // Seite zurueck
+    case '/': helpTop += HELP_ROWS; break;             // Seite vor
+    case ' ': cmd = playing ? 2 : 1; break;            // Play/Stop geht auch hier
+    case '`': case 8: case 13: mode = Mode::Grid; break;
+  }
+  helpTop = constrain(helpTop, 0, maxTop);
+}
+
+static void dispatchKey(char c, const Mods& m) {
+  switch (mode) {
+    case Mode::Boot: leaveBoot(); return;              // jede Taste ueberspringt den Startbildschirm
+    case Mode::Help: helpKey(c); return;
+    case Mode::Grid:
+      if (c == '/' || c == '`') { mode = Mode::Help; return; }   // ? (Shift+/) oder Esc
+      onKey(c, m);
+      return;
+  }
+}
+
 static uint8_t prevKeys[16];
 
 static void handleKeys() {
@@ -199,13 +295,83 @@ static void handleKeys() {
   for (int c = 1; c < 128; c++) {
     bool isNow = now[c >> 3] & (1 << (c & 7));
     bool wasPrev = prevKeys[c >> 3] & (1 << (c & 7));
-    if (isNow && !wasPrev) onKey((char)c, m);   // nur neu gedrückte Tasten auslösen
+    if (isNow && !wasPrev) dispatchKey((char)c, m);   // nur neu gedrückte Tasten auslösen
   }
   memcpy(prevKeys, now, sizeof(now));
 }
 
 // ---------------------------------------------------------------- Anzeige
-static void draw() {
+// Startbildschirm: Name, eine Step-Reihe laeuft einmal durch, Version
+static void drawBoot() {
+  uint32_t t = millis() - bootStart;
+  canvas.fillSprite(TFT_BLACK);
+  canvas.setTextSize(4);                               // Pixelschrift vergroessert, keine Extra-Schrift im Flash
+  canvas.setTextColor(C_MAGENTA);
+  canvas.drawCenterString("TAKT", 122, 20);
+  canvas.setTextColor(C_BRIGHT);
+  canvas.drawCenterString("TAKT", 120, 18);
+  canvas.setTextSize(1);
+
+  int cur = min<int>(t / 120, NS);                     // 16 Steps in ~1,9 s
+  for (int s = 0; s < NS; s++) {
+    int x = 16 + s * 13;
+    canvas.fillRect(x, 80, 12, 8, (s % 4 == 0) ? C_CELL_Q : C_CELL);
+    if (s < cur) canvas.fillRect(x, 80, 12, 8, (s % 4 == 0) ? C_BRIGHT : C_STEP);
+    if (s == cur) canvas.drawRect(x, 80, 12, 8, C_CYAN);
+  }
+  canvas.setTextColor(C_TEXT);
+  canvas.drawCenterString("Drum Machine", 120, 96);
+
+  canvas.drawFastHLine(0, 119, 240, C_CYAN);
+  canvas.setTextColor(C_STEP);
+  canvas.drawString(FW_VERSION, 3, 122);
+  canvas.drawRightString("Taste = weiter", 237, 122);
+  canvas.pushSprite(0, 0);
+}
+
+// Hilfe: Titel (Magenta, cyane Linie), Abschnitte Magenta, Tasten hell
+static void drawHelp() {
+  canvas.fillSprite(TFT_BLACK);
+  canvas.setTextColor(C_MAGENTA);
+  canvas.drawString("Hilfe", 3, 0);
+  canvas.setTextColor(C_STEP);
+  canvas.drawRightString("Takt " FW_VERSION, 237, 0);
+  canvas.drawFastHLine(0, 12, 240, C_CYAN);
+
+  char key[16];
+  for (int i = 0; i < HELP_ROWS && helpTop + i < HELP_LINES; i++) {
+    const char* line = HELP[helpTop + i];
+    int y = 14 + i * 13;
+    if (line[0] == '#') {
+      canvas.setTextColor(C_MAGENTA);
+      canvas.drawString(line + 1, 3, y);
+      continue;
+    }
+    const char* tab = strchr(line, '\t');
+    if (tab) {
+      int n = min<int>(tab - line, sizeof(key) - 1);
+      memcpy(key, line, n); key[n] = 0;
+      canvas.setTextColor(C_BRIGHT);
+      canvas.drawString(key, 3, y);
+      canvas.setTextColor(C_TEXT);
+      canvas.drawString(tab + 1, 69, y);
+    } else {
+      canvas.setTextColor(C_TEXT);
+      canvas.drawString(line, 3, y);
+    }
+  }
+  if (HELP_LINES > HELP_ROWS) {                        // Scrollbalken rechts
+    int h = 104 * HELP_ROWS / HELP_LINES;
+    int y = 14 + (104 - h) * helpTop / (HELP_LINES - HELP_ROWS);
+    canvas.fillRect(238, y, 2, h, C_CYAN);
+  }
+  canvas.drawFastHLine(0, 119, 240, C_CYAN);
+  canvas.setTextColor(C_STEP);
+  canvas.drawString("; . blättern  , / Seite  Esc zurück", 3, 122);
+  canvas.pushSprite(0, 0);
+}
+
+static void drawGrid() {
   canvas.fillSprite(TFT_BLACK);
   char b[48];
 
@@ -286,7 +452,18 @@ void setup() {
   M5.Speaker.setChannelVolume(0, 255);
 
   xTaskCreatePinnedToCore(audioTask, "audio", 4096, nullptr, 5, nullptr, 0);
-  showMsg("Takt " FW_VERSION " - Space = Play");
+  bootStart = millis();
+}
+
+static void draw() {
+  switch (mode) {
+    case Mode::Boot:
+      if (millis() - bootStart >= BOOT_MS) { leaveBoot(); drawGrid(); }
+      else drawBoot();
+      break;
+    case Mode::Grid: drawGrid(); break;
+    case Mode::Help: drawHelp(); break;
+  }
 }
 
 void loop() {

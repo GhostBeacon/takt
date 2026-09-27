@@ -14,6 +14,9 @@ Die Firmware ist bewusst klein (~0,5 MB), damit sie im Launcher neben anderen Ap
 - Pattern-Wechsel im Spiel wird **auf der Eins** übernommen (Anzeige `P1>2`)
 - **Euklid-Generator**, **Zufallsgenerator**, Pattern kopieren/einfügen
 - Song im internen Speicher sichern (Enter); beim Start wird er wieder geladen
+- Startbildschirm und **eingebaute Hilfe** mit Tastenbelegung (`?` oder Esc)
+
+Ausführliche Erklärung aller Funktionen: **[ANLEITUNG.md](ANLEITUNG.md)**
 
 ## Installieren
 
@@ -44,6 +47,7 @@ Sind mehrere Apps installiert, startet eine Ziffer auf dem Launcher-Startbildsch
 | Taste | Funktion |
 |---|---|
 | Space | Play / Stop |
+| `?` (Shift + `/`) oder Esc | Hilfe öffnen (`;` `.` blättern, Esc zurück) |
 | `1`–`8`, `Q`–`I` | Steps 1–16 der aktiven Spur an/aus |
 | Shift + Step | Accent |
 | Opt/Alt + Step | Wahrscheinlichkeit 100 → 75 → 50 → 25 % |
@@ -74,7 +78,7 @@ Sind mehrere Apps installiert, startet eine Ziffer auf dem Launcher-Startbildsch
 - **Aktive Spur:** Magenta-Kante links; gemutete Spuren dunkelgrau
 - **Fußzeile:** Parameter der aktiven Spur oder eine kurze Meldung
 
-Die Version steht nach dem Start kurz in der Fußzeile (`1.0.<Build-Nr.>`, lokal gebaut: `dev`).
+Beim Einschalten erscheint ein kurzer Startbildschirm (~2,6 s, jede Taste überspringt ihn). Die Version steht dort und in der Hilfe (`1.0.<Build-Nr.>`, lokal gebaut: `dev`).
 
 ## Bauen
 
