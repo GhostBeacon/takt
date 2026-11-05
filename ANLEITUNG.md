@@ -152,6 +152,19 @@ Wählst du von Hand ein Pattern (Fn + `1`–`8`, `9`, `0`), endet der Song-Modus
 
 **Swing** verzögert jeden zweiten Sechzehntel-Step. 50 % ist gerade, um 58 % klingt es leicht shuffelnd, 66 % ist eine Triole.
 
+## Zubehör: OLED oder Hex
+
+Am Grove-Port (die vierpolige Buchse an der Seite) kann eine **Unit OLED** oder eine **Unit Hex** stecken, immer nur eins von beiden. Takt erkennt beim Start, was angeschlossen ist: Antwortet ein OLED, wird es genutzt, sonst wird das Hex angesteuert. Nach dem Umstecken im laufenden Betrieb **Fn + E** drücken; die Fußzeile meldet, was erkannt wurde.
+
+**Fn + R** wechselt die Ansicht:
+
+- **Hex – Lichtorgel:** Jede Spur hat eine Farbe und eine Zone. Kick rot in der Mitte, Cowbell magenta im inneren Ring, Snare orange und Clap gelb im mittleren Ring, die Toms grün auf je einer Hälfte davon, Closed und Open Hat cyan und blau im äußeren Ring. Accents leuchten heller. Ein weißer Punkt kreist im Takt am Rand, auf den Vierteln heller. Gestoppt glimmt die Mitte schwach cyan.
+- **Hex – Spur:** Die 16 Steps der aktiven Spur liegen im äußeren Ring, oben beginnend im Uhrzeigersinn. Accents sind hell, normale Steps gedimmt, die Abspielposition weiß. Die Mitte blitzt bei jedem Schlag der Spur.
+- **OLED – Info:** Pattern (oder Song-Platz), Tempo, Swing und aktive Spur groß, darunter 16 Kästchen mit der Laufposition.
+- **OLED – Pegel:** acht Balken, je Spur einer; sie springen bei jedem Schlag hoch und fallen dann ab. Die aktive Spur ist hell hinterlegt.
+
+**Fn + T** stellt beim Hex die Helligkeit um (3 Stufen) und dreht beim OLED die Anzeige um 180°, je nachdem, wie herum das Display steht. Ansicht, Helligkeit und Drehung werden sofort gespeichert.
+
 ## Speichern
 
 **Enter** speichert alle 8 Patterns, die Song-Kette (samt An/Aus), die Spurwerte, Tempo, Swing und Lautstärke im internen Speicher des Cardputers. Beim nächsten Start wird der Song automatisch geladen. Nicht gespeicherte Änderungen gehen beim Ausschalten verloren.
