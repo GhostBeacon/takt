@@ -53,6 +53,13 @@ Hardware-Test v1.0.3: Speichern/Laden (inkl. Kette) ok, Song-Modus läuft. Damit
 - **Hilfe**: `?` (Shift+/) oder Esc (`` ` ``) öffnet; `;` `.` Zeile, `,` `/` Seite, Space Play/Stop, Esc/Del/Enter zurück (zur Ansicht, aus der sie geöffnet wurde)
 - **Song-Ansicht** (`\`): Kette mit 16 Plätzen in 2 Reihen à 8 (27×40 px), je Platz „P3“ + „×4“; laufender Platz Magenta-Kante oben + cyaner Fortschrittsbalken; Cursor cyaner Rahmen; „+“-Platz zum Anhängen
 
+## Grove-Zubehör (Unit OLED / Unit Hex)
+- Ansteuerung in `lib/beiwerk` (Beiwerk.h/.cpp, namespace `beiwerk`; PlatformIO baut `lib/` automatisch mit). Krähenauge bekommt eine Kopie derselben Dateien, Änderungen in beiden nachziehen. Erkennung: I²C-Antwort auf 0x3C am Grove-Port (G2 SDA gelb, G1 SCL weiß, I²C-Port 0) = OLED, sonst Hex (SK6812 über RMT-Kanal 3 auf G2).
+- Takt-eigene Darstellung in `src/zubehoer.h` (namespace `zub`), eingebunden in `main.cpp` nach `FONT`. Tasten Fn+E erkennen, Fn+R Ansicht, Fn+T Hex-Helligkeit (5/12/25 %) bzw. OLED drehen. Einstellungen in NVS `takt/zub` (4 B).
+- Audio → UI: `hitMask` (Bit t = Spur geschlagen, Bit 8+t = Accent, per `__atomic_fetch_or` in `noteHit`) und `uiGstep`. Sonst nichts im Audio-Pfad.
+- OLED wird nur bei geändertem Bild gesendet, höchstens ~12/s (ein volles Bild über I²C 400 kHz ≈ 25 ms in der UI-Schleife). Hex ~30/s, `show()` ≈ 1,2 ms.
+- Erkannt wird nur beim Start und per Fn+E, nie laufend: Ein I²C-Scan flackert am Hex.
+
 ## Song-Modus
 - Kette `chainLen`, `chainPat[16]`, `chainRep[16]` (1–8 Takte) im `Song`; `songMode` an/aus
 - Takt = 16 globale Steps (`gstep`). An jeder Eins ruft `doStep` → `songBar()`: zählt Takte, schaltet weiter, am Ende von vorn. `firstStep` verhindert, dass der Start als Taktende zählt.

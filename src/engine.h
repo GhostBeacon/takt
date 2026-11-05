@@ -44,6 +44,12 @@ static volatile bool songMode = false;    // Kette statt Einzel-Pattern abspiele
 static volatile int chainPos = 0;         // aktueller Platz in der Kette
 static volatile int chainBar = 0;         // gespielte Takte auf diesem Platz
 static volatile int songJump = -1;        // UI: an der naechsten Eins zu diesem Platz springen
+static volatile uint32_t hitMask = 0;     // fuer Hex/OLED: Bit t = Spur t geschlagen, Bit 8+t = mit Accent
+static volatile uint8_t uiGstep = 0;      // globaler Step (0-15) fuer die Laufposition auf dem Hex
+
+static inline void noteHit(int t, float vel) {
+  __atomic_fetch_or(&hitMask, (1u << t) | (vel >= 0.95f ? 1u << (8 + t) : 0u), __ATOMIC_RELAXED);
+}
 
 // ---------------------------------------------------------------- DSP-Helfer
 static float sineLUT[1024];
@@ -214,6 +220,7 @@ static void doStep() {
     if (st.on && !song.tp[t].mute && (int)(xr() % 100) < PROB_PCT[st.prob & 3]) {
       float vel = st.on == 2 ? 1.0f : 0.7f;
       trigger(t, vel);
+      noteHit(t, vel);
       if (st.rat > 1) {
         rat[t].left = st.rat - 1;
         rat[t].interval = (int)(thisLen / st.rat);
@@ -226,6 +233,7 @@ static void doStep() {
     int len = P.len[t] < 1 ? 1 : P.len[t];
     tpos[t] = (p + 1) % len;                     // eigene Länge je Spur = Polymeter
   }
+  uiGstep = gstep;
   gstep = (gstep + 1) % NS;
   toNext += thisLen;
 }
@@ -251,7 +259,7 @@ static void render(int16_t* out, int n) {
   }
 
   uint32_t pads = __atomic_exchange_n(&padMask, 0u, __ATOMIC_SEQ_CST);
-  for (int t = 0; t < NT; t++) if (pads & (1u << t)) trigger(t, 0.9f);
+  for (int t = 0; t < NT; t++) if (pads & (1u << t)) { trigger(t, 0.9f); noteHit(t, 0.9f); }
 
   for (int i = 0; i < n; i++) {
     if (playing) {
@@ -260,6 +268,7 @@ static void render(int16_t* out, int n) {
       for (int t = 0; t < NT; t++) {
         if (rat[t].left > 0 && --rat[t].cnt <= 0) {
           trigger(t, rat[t].vel);
+          noteHit(t, rat[t].vel);
           rat[t].left--;
           rat[t].cnt = rat[t].interval;
         }

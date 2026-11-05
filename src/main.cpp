@@ -30,6 +30,8 @@ static uint32_t msgUntil = 0;
 
 static const lgfx::U8g2font FONT(spleen6x12);
 
+#include "zubehoer.h"   // OLED oder Hex am Grove-Port (braucht FONT, curTrack)
+
 // Stil "Graphit" mit Neon-Noir-Akzenten (Cyan/Magenta wie Kraehenauge)
 static constexpr uint16_t rgb(uint8_t r, uint8_t g, uint8_t b) { return ((r & 0xF8) << 8) | ((g & 0xFC) << 3) | (b >> 3); }
 static constexpr uint16_t C_CYAN    = rgb(0x05, 0xd9, 0xe8);
@@ -206,7 +208,11 @@ static void onKey(char c, const Mods& m) {
 
   if (c && sk) {                                   // Steps
     int i = sk - STEP_KEYS;
-    if (m.fn) { if (i < NP) selectPattern(i); return; }
+    if (m.fn) {
+      if (i < NP) selectPattern(i);
+      else if (const char* z = zub::fnTaste(c)) showMsg(z, 2000);   // Fn+E/R/T: Grove-Zubehoer
+      return;
+    }
     Step& st = P().s[curTrack][i];
     if (m.shift)      st.on = (st.on == 2) ? 1 : 2;
     else if (m.alt)   { if (st.on) st.prob = (st.prob + 1) % 4; }
@@ -271,7 +277,9 @@ static void onKey(char c, const Mods& m) {
 
 static void leaveBoot() {
   mode = Mode::Grid;
-  showMsg("Takt " FW_VERSION "  ·  ? = Hilfe", 3000);
+  char b[48];
+  snprintf(b, sizeof(b), "Takt " FW_VERSION "  ·  %s  ·  ? = Hilfe", zub::kurzname());
+  showMsg(b, 3000);
 }
 
 static void helpKey(char c) {
@@ -582,6 +590,7 @@ void setup() {
 
   engineInit();
   loadSong();
+  zub::begin();
 
   M5.Speaker.begin();
   M5.Speaker.setVolume(song.vol);
@@ -607,5 +616,6 @@ void loop() {
   handleKeys();
   static uint32_t last = 0;
   if (millis() - last >= 33) { last = millis(); draw(); }
+  zub::tick();
   delay(1);
 }
