@@ -16,6 +16,7 @@ Die Firmware ist bewusst klein (~0,5 MB), damit sie im Launcher neben anderen Ap
 - **Euklid-Generator**, **Zufallsgenerator**, Pattern kopieren/einfügen
 - Song im internen Speicher sichern (Enter); beim Start wird er wieder geladen
 - Startbildschirm und **eingebaute Hilfe** mit Tastenbelegung (`?` oder Esc)
+- **Zubehör am Grove-Port:** Unit OLED als Zweitanzeige oder Unit Hex als Lichtorgel
 
 Ausführliche Erklärung aller Funktionen: **[ANLEITUNG.md](ANLEITUNG.md)**
 
@@ -81,6 +82,21 @@ Sind mehrere Apps installiert, startet eine Ziffer auf dem Launcher-Startbildsch
 - **Fußzeile:** Parameter der aktiven Spur oder eine kurze Meldung
 
 Beim Einschalten erscheint ein kurzer Startbildschirm (~2,6 s, jede Taste überspringt ihn). Die Version steht dort und in der Hilfe (`1.0.<Build-Nr.>`, lokal gebaut: `dev`).
+
+## Zubehör am Grove-Port
+
+Am Grove-Port kann **eine** von zwei Erweiterungen stecken (immer nur eine):
+
+- **Unit OLED** (SH1107, 1,3", 128×64): *Info* zeigt Pattern bzw. Song-Platz, Tempo und die Laufposition groß, *Pegel* je Spur einen Balken, der bei jedem Schlag hochspringt.
+- **Unit Hex** (37 RGB-LEDs): *Lichtorgel* lässt jede Spur in ihrer Farbe und Zone aufblitzen (Kick in der Mitte, Hats außen), die Laufposition kreist am Rand; *Spur* zeigt die Steps der aktiven Spur im äußeren Ring.
+
+| Taste | Funktion |
+|---|---|
+| Fn + `E` | Gerät neu erkennen (nach dem Umstecken) |
+| Fn + `R` | Ansicht wechseln |
+| Fn + `T` | Hex: Helligkeit (3 Stufen) · OLED: um 180° drehen |
+
+Erkannt wird beim Start: Antwortet am Port ein OLED, wird es genutzt, sonst wird das Hex angesteuert. Ansicht, Helligkeit und Drehung bleiben gespeichert. Die Helligkeit des Hex ist bewusst begrenzt (höchstens 25 %), damit Akku und Grove-Port nicht überlastet werden. Die Ansteuerung steckt in [`lib/beiwerk`](lib/beiwerk) (Erkennung, OLED, Hex-Treiber).
 
 ## Bauen
 
