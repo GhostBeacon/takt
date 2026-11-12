@@ -1,13 +1,13 @@
 /*
-  Schriften fuer Takt: Spleen 6x12 (Pixel-Monospace), normal + fett, im u8g2-Format.
-  Quelle: spleen-6x12.bdf aus Spleen 2.2.0 (https://github.com/fcambus/spleen).
-  Ergaenzt um selbst gezeichnete Glyphen: – — ‘ ’ ‚ ‛ “ ” „ • … €
-  "fett" = jede Zeile mit sich selbst um 1 px nach rechts verschoben ODER-verknuepft.
-  Erzeugt mit bdfconv aus u8g2:
+  Fonts for Takt: Spleen 6x12 (monospaced pixel font), regular + bold, in u8g2 format.
+  Source: spleen-6x12.bdf from Spleen 2.2.0 (https://github.com/fcambus/spleen).
+  Extended with hand-drawn glyphs: – — ‘ ’ ‚ ‛ “ ” „ • … €
+  "bold" = every row ORed with itself shifted 1 px to the right.
+  Generated with bdfconv from u8g2:
     bdfconv -f 1 -m '32-255,8211-8212,8216-8222,8226,8230,8364' -n spleen6x12 ...
-  Enthalten: ASCII, Latin-1 (Umlaute, ss, Grad ...), – — ‘ ’ ‚ “ ” „ • … €
+  Included: ASCII, Latin-1 (umlauts, sharp s, degree sign ...), – — ‘ ’ ‚ “ ” „ • … €
 
-  Lizenz der Schriftdaten (BSD 2-Clause, aus spleen/LICENSE):
+  Licence of the font data (BSD 2-Clause, from spleen/LICENSE):
   Copyright (c) 2018-2026, Frederic Cambus
   All rights reserved.
 

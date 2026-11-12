@@ -1,4 +1,4 @@
-// Takt – Drum Machine fuer den M5Stack Cardputer ADV
+// Takt – drum machine for the M5Stack Cardputer ADV
 #include <M5Cardputer.h>
 #include <Preferences.h>
 #include <nvs.h>
@@ -19,8 +19,8 @@ static bool hasClip = false;
 static char msg[48] = "";
 
 enum class Mode { Boot, Grid, Help, Song };
-static Mode helpReturn = Mode::Grid;     // wohin die Hilfe zurueckkehrt
-static int songCursor = 0;              // ausgewaehlter Platz in der Song-Ansicht
+static Mode helpReturn = Mode::Grid;     // where help returns to
+static int songCursor = 0;              // selected slot in the song view
 static Mode mode = Mode::Boot;
 static uint32_t bootStart = 0;
 static constexpr uint32_t BOOT_MS = 2600;
@@ -30,31 +30,31 @@ static uint32_t msgUntil = 0;
 
 static const lgfx::U8g2font FONT(spleen6x12);
 
-#include "zubehoer.h"   // OLED oder Hex am Grove-Port (braucht FONT, curTrack)
+#include "accessory.h"  // OLED or Hex on the Grove port (needs FONT, curTrack)
 
-// Stil "Graphit" mit Neon-Noir-Akzenten (Cyan/Magenta)
+// "Graphite" style with neon-noir accents (cyan/magenta)
 static constexpr uint16_t rgb(uint8_t r, uint8_t g, uint8_t b) { return ((r & 0xF8) << 8) | ((g & 0xFC) << 3) | (b >> 3); }
 static constexpr uint16_t C_CYAN    = rgb(0x05, 0xd9, 0xe8);
 static constexpr uint16_t C_MAGENTA = rgb(0xff, 0x2a, 0x6d);
-static constexpr uint16_t C_BRIGHT  = rgb(0xed, 0xed, 0xed);   // Accent-Steps, aktive Spur
-static constexpr uint16_t C_STEP    = rgb(0x8c, 0x8c, 0x8c);   // normale Steps
+static constexpr uint16_t C_BRIGHT  = rgb(0xed, 0xed, 0xed);   // accent steps, active track
+static constexpr uint16_t C_STEP    = rgb(0x8c, 0x8c, 0x8c);   // normal steps
 static constexpr uint16_t C_TEXT    = rgb(0xb8, 0xb8, 0xb8);
-static constexpr uint16_t C_MUTED   = rgb(0x3a, 0x3a, 0x3a);   // gemutete Spur
+static constexpr uint16_t C_MUTED   = rgb(0x3a, 0x3a, 0x3a);   // muted track
 static constexpr uint16_t C_CELL    = rgb(0x17, 0x17, 0x17);
-static constexpr uint16_t C_CELL_Q  = rgb(0x26, 0x26, 0x26);   // Viertel-Raster
-static constexpr uint16_t C_OUTSIDE = rgb(0x1c, 0x1c, 0x1c);   // jenseits der Spurlaenge
-static constexpr uint16_t C_SEL     = rgb(0x1e, 0x1e, 0x1e);   // Hintergrund aktive Spur
+static constexpr uint16_t C_CELL_Q  = rgb(0x26, 0x26, 0x26);   // quarter-note grid
+static constexpr uint16_t C_OUTSIDE = rgb(0x1c, 0x1c, 0x1c);   // beyond the track length
+static constexpr uint16_t C_SEL     = rgb(0x1e, 0x1e, 0x1e);   // background of the active track
 static const char* STEP_KEYS = "12345678qwertyui";
 static const char* TRACK_KEYS = "asdfghjk";
 
-// ---------------------------------------------------------------- Audio-Task
-static constexpr int ABUF = 256;   // ≈ 5,8 ms pro Puffer
+// ---------------------------------------------------------------- Audio task
+static constexpr int ABUF = 256;   // ≈ 5.8 ms per buffer
 static int16_t abuf[3][ABUF];
 
 static void audioTask(void*) {
   int bi = 0;
   for (;;) {
-    if (M5.Speaker.isPlaying(0) < 2) {       // Warteschlange hat Platz
+    if (M5.Speaker.isPlaying(0) < 2) {       // the queue has room
       render(abuf[bi], ABUF);
       M5.Speaker.playRaw(abuf[bi], ABUF, SR, false, 1, 0, false);
       bi = (bi + 1) % 3;
@@ -64,15 +64,15 @@ static void audioTask(void*) {
   }
 }
 
-// ---------------------------------------------------------------- Speichern
+// ---------------------------------------------------------------- Saving
 static void showMsg(const char* m, uint32_t ms = 1400) { strncpy(msg, m, sizeof(msg) - 1); msgUntil = millis() + ms; }
 
-// Der NVS-Bereich (20 KB) wird mit dem Launcher und anderen Apps geteilt. Deshalb gepackt
-// (1 Byte pro Step) und in kleinen Bloecken: "cfg" + je Pattern "p0".."p7" (~1,2 KB gesamt).
+// The NVS partition (20 KB) is shared with the launcher and other apps. Hence packed
+// (1 byte per step) and in small blobs: "cfg" + one per pattern "p0".."p7" (~1.2 KB in total).
 struct SavedCfg { uint32_t magic; TrackParams tp[NT]; uint16_t bpm; uint8_t swing, vol; };
-struct SavedPat { uint8_t s[NT][NS]; uint8_t len[NT]; };           // Bit 0-1 on, 2-3 prob, 4-5 rat-1
-struct SavedChain { uint8_t len, mode; uint8_t e[CHAIN_MAX]; };    // e: Bit 0-2 Pattern, 3-5 Wiederholungen-1
-static constexpr uint32_t SAVE_MAGIC = 0x54414B01;                // "TAK" + Format 1
+struct SavedPat { uint8_t s[NT][NS]; uint8_t len[NT]; };           // bits 0-1 on, 2-3 prob, 4-5 rat-1
+struct SavedChain { uint8_t len, mode; uint8_t e[CHAIN_MAX]; };    // e: bits 0-2 pattern, 3-5 repeats-1
+static constexpr uint32_t SAVE_MAGIC = 0x54414B01;                // "TAK" + format 1
 
 static void packPattern(const Pattern& p, SavedPat& o) {
   for (int t = 0; t < NT; t++) {
@@ -99,11 +99,11 @@ static void saveSong() {
   if (!prefs.begin("takt", false)) {
     nvs_stats_t st{};
     nvs_get_stats(nullptr, &st);
-    snprintf(b, sizeof(b), "Fehler: Speicher voll (frei %u B)", (unsigned)(st.free_entries * 32));
+    snprintf(b, sizeof(b), "Error: storage full (%u B free)", (unsigned)(st.free_entries * 32));
     showMsg(b, 5000);
     return;
   }
-  prefs.remove("song");                                           // alter 3,2-KB-Block aus v1.0.1, falls vorhanden
+  prefs.remove("song");                                           // old 3.2 KB blob from v1.0.1, if present
   SavedCfg c{SAVE_MAGIC, {}, song.bpm, song.swing, song.vol};
   memcpy(c.tp, song.tp, sizeof(c.tp));
   bool ok = true;
@@ -118,12 +118,12 @@ static void saveSong() {
     for (int i = 0; i < CHAIN_MAX; i++) ch.e[i] = (song.chainPat[i] & 7) | (((song.chainRep[i] - 1) & 7) << 3);
     ok = prefs.putBytes("chn", &ch, sizeof(ch)) == sizeof(ch);
   }
-  if (ok) ok = prefs.putBytes("cfg", &c, sizeof(c)) == sizeof(c);   // zuletzt: cfg markiert einen vollstaendigen Song
+  if (ok) ok = prefs.putBytes("cfg", &c, sizeof(c)) == sizeof(c);   // last: cfg marks a complete song
   prefs.end();
-  if (ok) { showMsg("Gespeichert"); return; }
+  if (ok) { showMsg("Saved"); return; }
   nvs_stats_t st{};
   nvs_get_stats(nullptr, &st);
-  snprintf(b, sizeof(b), "Fehler beim Speichern (frei %u B)", (unsigned)(st.free_entries * 32));
+  snprintf(b, sizeof(b), "Error while saving (%u B free)", (unsigned)(st.free_entries * 32));
   showMsg(b, 5000);
 }
 
@@ -151,7 +151,7 @@ static void loadSong() {
   prefs.end();
 }
 
-// ---------------------------------------------------------------- Pattern-Werkzeuge
+// ---------------------------------------------------------------- Pattern tools
 static Pattern& P() { return song.pat[curPat]; }
 
 static int hitCount(int t) {
@@ -162,7 +162,7 @@ static int hitCount(int t) {
 
 static void clearTrack(int t) { for (int s = 0; s < NS; s++) P().s[t][s] = {0, 0, 1}; }
 
-static void euclid(int t, int k) {            // k Schläge gleichmäßig auf die Spurlänge verteilen
+static void euclid(int t, int k) {            // spread k hits evenly over the track length
   int n = P().len[t];
   clearTrack(t);
   for (int s = 0; s < n; s++) if (((s * k) % n) < k) P().s[t][s].on = 1;
@@ -182,13 +182,13 @@ static void randomTrack(int t) {
 
 static void selectPattern(int p) {
   p = (p + NP) % NP;
-  if (songMode) { songMode = false; showMsg("Song-Modus aus"); }
-  pendingPat = p;              // Audio-Task übernimmt am Taktanfang (oder sofort, wenn gestoppt)
+  if (songMode) { songMode = false; showMsg("Song mode off"); }
+  pendingPat = p;              // the audio task applies it at the start of the bar (or at once when stopped)
   char b[24]; snprintf(b, sizeof(b), "Pattern %d", p + 1);
   if (millis() >= msgUntil) showMsg(b);
 }
 
-// ---------------------------------------------------------------- Tastatur
+// ---------------------------------------------------------------- Keyboard
 struct Mods { bool fn, shift, ctrl, alt; };
 
 static char norm(char c) {
@@ -210,7 +210,7 @@ static void onKey(char c, const Mods& m) {
     int i = sk - STEP_KEYS;
     if (m.fn) {
       if (i < NP) selectPattern(i);
-      else if (const char* z = zub::fnTaste(c)) showMsg(z, 2000);   // Fn+E/R/T: Grove-Zubehoer
+      else if (const char* z = acc::fnKey(c)) showMsg(z, 2000);      // Fn+E/R/T: Grove accessories
       return;
     }
     Step& st = P().s[curTrack][i];
@@ -220,14 +220,14 @@ static void onKey(char c, const Mods& m) {
     else              { st.on = st.on ? 0 : 1; if (!st.on) { st.prob = 0; st.rat = 1; } }
     return;
   }
-  if (c && tk) {                                   // Spuren
+  if (c && tk) {                                   // Tracks
     int t = tk - TRACK_KEYS;
     if (m.fn) { song.tp[t].mute ^= 1; return; }
     if (m.shift) {                                 // Solo
       bool solo = true;
       for (int i = 0; i < NT; i++) if ((i == t) == (bool)song.tp[i].mute) solo = false;
       for (int i = 0; i < NT; i++) song.tp[i].mute = solo ? 0 : (i != t);
-      showMsg(solo ? "Solo aus" : "Solo");
+      showMsg(solo ? "Solo off" : "Solo");
       return;
     }
     curTrack = t;
@@ -237,10 +237,10 @@ static void onKey(char c, const Mods& m) {
 
   switch (c) {
     case ' ':
-      if (!playing && songMode) songJump = 0;          // Song startet am Anfang der Kette
+      if (!playing && songMode) songJump = 0;          // the song starts at the beginning of the chain
       cmd = playing ? 2 : 1;
       break;
-    case '\\': mode = Mode::Song; break;              // Song-Ansicht
+    case '\\': mode = Mode::Song; break;              // song view
     case 'm': padMask |= 1u << curTrack; break;
     case '9': selectPattern(curPat - 1); break;
     case '0': selectPattern(curPat + 1); break;
@@ -261,14 +261,14 @@ static void onKey(char c, const Mods& m) {
     case 'l': {
       int k = clampv<int>(hitCount(curTrack) + (m.shift ? -1 : 1), 0, P().len[curTrack]);
       euclid(curTrack, k);
-      char b[24]; snprintf(b, sizeof(b), "Euklid %d/%d", k, P().len[curTrack]); showMsg(b);
+      char b[24]; snprintf(b, sizeof(b), "Euclid %d/%d", k, P().len[curTrack]); showMsg(b);
       break;
     }
-    case 9:  randomTrack(curTrack); showMsg("Zufall"); break;           // Tab
-    case 'o': clip = P(); hasClip = true; showMsg("Pattern kopiert"); break;
-    case 'p': if (hasClip) { P() = clip; showMsg("Eingefuegt"); } break;
+    case 9:  randomTrack(curTrack); showMsg("Random"); break;           // Tab
+    case 'o': clip = P(); hasClip = true; showMsg("Pattern copied"); break;
+    case 'p': if (hasClip) { P() = clip; showMsg("Pasted"); } break;
     case 8:                                                              // Del
-      if (m.fn) { for (int t = 0; t < NT; t++) clearTrack(t); showMsg("Pattern geleert"); }
+      if (m.fn) { for (int t = 0; t < NT; t++) clearTrack(t); showMsg("Pattern cleared"); }
       else clearTrack(curTrack);
       break;
     case 13: saveSong(); break;                                          // Enter
@@ -278,36 +278,36 @@ static void onKey(char c, const Mods& m) {
 static void leaveBoot() {
   mode = Mode::Grid;
   char b[48];
-  snprintf(b, sizeof(b), "Takt " FW_VERSION "  ·  %s  ·  ? = Hilfe", zub::kurzname());
+  snprintf(b, sizeof(b), "Takt " FW_VERSION "  ·  %s  ·  ? = help", acc::shortName());
   showMsg(b, 3000);
 }
 
 static void helpKey(char c) {
   int maxTop = HELP_LINES > HELP_ROWS ? HELP_LINES - HELP_ROWS : 0;
   switch (c) {
-    case ';': helpTop--; break;                        // Pfeil hoch
-    case '.': helpTop++; break;                        // Pfeil runter
-    case ',': helpTop -= HELP_ROWS; break;             // Seite zurueck
-    case '/': helpTop += HELP_ROWS; break;             // Seite vor
-    case ' ': cmd = playing ? 2 : 1; break;            // Play/Stop geht auch hier
+    case ';': helpTop--; break;                        // arrow up
+    case '.': helpTop++; break;                        // arrow down
+    case ',': helpTop -= HELP_ROWS; break;             // page back
+    case '/': helpTop += HELP_ROWS; break;             // page forward
+    case ' ': cmd = playing ? 2 : 1; break;            // play/stop works here too
     case '`': case 8: case 13: mode = helpReturn; break;
   }
   helpTop = constrain(helpTop, 0, maxTop);
 }
 
-// Song-Ansicht: Kette bearbeiten. Pfeiltasten ; . , / bewegen den Cursor.
+// Song view: edit the chain. The arrow keys ; . , / move the cursor.
 static void songKey(char c, const Mods& m) {
   int n = song.chainLen;
   int& k = songCursor;
   if (c >= '1' && c <= '8') {
     int pat = c - '1';
-    if (m.shift && n < CHAIN_MAX && k < n) {             // Shift + 1-8: vor dem Cursor einfuegen
+    if (m.shift && n < CHAIN_MAX && k < n) {             // Shift + 1-8: insert before the cursor
       for (int i = n; i > k; i--) { song.chainPat[i] = song.chainPat[i - 1]; song.chainRep[i] = song.chainRep[i - 1]; }
       song.chainPat[k] = pat; song.chainRep[k] = 1;
       song.chainLen = n + 1;
-    } else if (k < n) {                                  // Platz belegt: Pattern ersetzen
+    } else if (k < n) {                                  // slot in use: replace the pattern
       song.chainPat[k] = pat;
-    } else if (n < CHAIN_MAX) {                          // "+"-Platz: anhaengen, Cursor weiter
+    } else if (n < CHAIN_MAX) {                          // "+" slot: append, advance the cursor
       song.chainPat[n] = pat; song.chainRep[n] = 1;
       song.chainLen = n + 1;
       if (k < CHAIN_MAX - 1) k++;
@@ -315,45 +315,45 @@ static void songKey(char c, const Mods& m) {
     return;
   }
   switch (c) {
-    case ',': k--; break;                                // Pfeil links
+    case ',': k--; break;                                // arrow left
     case '/':
       if (m.shift) { helpReturn = Mode::Song; mode = Mode::Help; return; }   // ?
-      k++; break;                                        // Pfeil rechts
-    case ';': k -= 8; break;                             // Pfeil hoch
-    case '.': k += 8; break;                             // Pfeil runter
+      k++; break;                                        // arrow right
+    case ';': k -= 8; break;                             // arrow up
+    case '.': k += 8; break;                             // arrow down
     case '-': if (k < n && song.chainRep[k] > 1) song.chainRep[k]--; break;
     case '=': if (k < n && song.chainRep[k] < 8) song.chainRep[k]++; break;
-    case 8:                                              // Del: Platz loeschen
+    case 8:                                              // Del: delete the slot
       if (k < n) {
         for (int i = k; i < n - 1; i++) { song.chainPat[i] = song.chainPat[i + 1]; song.chainRep[i] = song.chainRep[i + 1]; }
         song.chainLen = n - 1;
         if (song.chainLen == 0) songMode = false;
       }
       break;
-    case 9:                                              // Tab: Song-Modus an/aus
-      if (!songMode && n == 0) { showMsg("Kette ist leer"); break; }
+    case 9:                                              // Tab: song mode on/off
+      if (!songMode && n == 0) { showMsg("Chain is empty"); break; }
       songMode = !songMode;
-      if (songMode) songJump = k < n ? k : 0;            // ab Cursor, an der naechsten Eins
-      showMsg(songMode ? "Song-Modus an" : "Song-Modus aus");
+      if (songMode) songJump = k < n ? k : 0;            // from the cursor, on the next downbeat
+      showMsg(songMode ? "Song mode on" : "Song mode off");
       break;
-    case ' ':                                            // Play ab Cursor
+    case ' ':                                            // play from the cursor
       if (!playing && songMode) songJump = k < n ? k : 0;
       cmd = playing ? 2 : 1;
       break;
     case 13: saveSong(); break;
     case '`': case '\\': mode = Mode::Grid; break;
   }
-  int maxK = min<int>(song.chainLen, CHAIN_MAX - 1);   // Cursor bis einschliesslich "+"-Platz
+  int maxK = min<int>(song.chainLen, CHAIN_MAX - 1);   // cursor up to and including the "+" slot
   k = constrain(k, 0, maxK);
 }
 
 static void dispatchKey(char c, const Mods& m) {
   switch (mode) {
-    case Mode::Boot: leaveBoot(); return;              // jede Taste ueberspringt den Startbildschirm
+    case Mode::Boot: leaveBoot(); return;              // any key skips the splash screen
     case Mode::Help: helpKey(c); return;
     case Mode::Song: songKey(c, m); return;
     case Mode::Grid:
-      if (c == '/' || c == '`') { helpReturn = Mode::Grid; mode = Mode::Help; return; }   // ? (Shift+/) oder Esc
+      if (c == '/' || c == '`') { helpReturn = Mode::Grid; mode = Mode::Help; return; }   // ? (Shift+/) or Esc
       onKey(c, m);
       return;
   }
@@ -376,24 +376,24 @@ static void handleKeys() {
   for (int c = 1; c < 128; c++) {
     bool isNow = now[c >> 3] & (1 << (c & 7));
     bool wasPrev = prevKeys[c >> 3] & (1 << (c & 7));
-    if (isNow && !wasPrev) dispatchKey((char)c, m);   // nur neu gedrückte Tasten auslösen
+    if (isNow && !wasPrev) dispatchKey((char)c, m);   // fire only for newly pressed keys
   }
   memcpy(prevKeys, now, sizeof(now));
 }
 
-// ---------------------------------------------------------------- Anzeige
-// Startbildschirm: Name, eine Step-Reihe laeuft einmal durch, Version
+// ---------------------------------------------------------------- Display
+// Splash screen: name, a row of steps runs through once, version
 static void drawBoot() {
   uint32_t t = millis() - bootStart;
   canvas.fillSprite(TFT_BLACK);
-  canvas.setTextSize(4);                               // Pixelschrift vergroessert, keine Extra-Schrift im Flash
+  canvas.setTextSize(4);                               // pixel font scaled up, no extra font in flash
   canvas.setTextColor(C_MAGENTA);
   canvas.drawCenterString("TAKT", 122, 20);
   canvas.setTextColor(C_BRIGHT);
   canvas.drawCenterString("TAKT", 120, 18);
   canvas.setTextSize(1);
 
-  int cur = min<int>(t / 120, NS);                     // 16 Steps in ~1,9 s
+  int cur = min<int>(t / 120, NS);                     // 16 steps in ~1.9 s
   for (int s = 0; s < NS; s++) {
     int x = 16 + s * 13;
     canvas.fillRect(x, 80, 12, 8, (s % 4 == 0) ? C_CELL_Q : C_CELL);
@@ -406,15 +406,15 @@ static void drawBoot() {
   canvas.drawFastHLine(0, 119, 240, C_CYAN);
   canvas.setTextColor(C_STEP);
   canvas.drawString(FW_VERSION, 3, 122);
-  canvas.drawRightString("Taste = weiter", 237, 122);
+  canvas.drawRightString("any key = skip", 237, 122);
   canvas.pushSprite(0, 0);
 }
 
-// Hilfe: Titel (Magenta, cyane Linie), Abschnitte Magenta, Tasten hell
+// Help: title in magenta above a cyan line, sections in magenta, keys bright
 static void drawHelp() {
   canvas.fillSprite(TFT_BLACK);
   canvas.setTextColor(C_MAGENTA);
-  canvas.drawString("Hilfe", 3, 0);
+  canvas.drawString("Help", 3, 0);
   canvas.setTextColor(C_STEP);
   canvas.drawRightString("Takt " FW_VERSION, 237, 0);
   canvas.drawFastHLine(0, 12, 240, C_CYAN);
@@ -441,18 +441,18 @@ static void drawHelp() {
       canvas.drawString(line, 3, y);
     }
   }
-  if (HELP_LINES > HELP_ROWS) {                        // Scrollbalken rechts
+  if (HELP_LINES > HELP_ROWS) {                        // scroll bar on the right
     int h = 104 * HELP_ROWS / HELP_LINES;
     int y = 14 + (104 - h) * helpTop / (HELP_LINES - HELP_ROWS);
     canvas.fillRect(238, y, 2, h, C_CYAN);
   }
   canvas.drawFastHLine(0, 119, 240, C_CYAN);
   canvas.setTextColor(C_STEP);
-  canvas.drawString("; . blättern  , / Seite  Esc zurück", 3, 122);
+  canvas.drawString("; . scroll  , / page  Esc back", 3, 122);
   canvas.pushSprite(0, 0);
 }
 
-// Song-Ansicht: 16 Plaetze in 2 Reihen, je Platz Pattern und Wiederholungen
+// Song view: 16 slots in 2 rows, each showing pattern and repeats
 static void drawSong() {
   canvas.fillSprite(TFT_BLACK);
   char b[48];
@@ -463,9 +463,9 @@ static void drawSong() {
   canvas.setTextColor(C_MAGENTA);
   canvas.drawString("Song", 3, 0);
   canvas.setTextColor(songMode ? C_CYAN : C_STEP);
-  canvas.drawString(songMode ? "Modus an" : "Modus aus", 39, 0);
+  canvas.drawString(songMode ? "mode on" : "mode off", 39, 0);
   canvas.setTextColor(C_STEP);
-  snprintf(b, sizeof(b), "%d Takte", bars);
+  snprintf(b, sizeof(b), "%d bar%s", bars, bars == 1 ? "" : "s");
   canvas.drawRightString(b, 237, 0);
   canvas.drawFastHLine(0, 12, 240, C_CYAN);
 
@@ -475,7 +475,7 @@ static void drawSong() {
     if (i < n) {
       bool now = songMode && playing && i == cp;
       canvas.fillRect(x, y, 27, 40, now ? C_CELL_Q : C_CELL);
-      if (now) {                                           // laeuft gerade: Magenta oben, Fortschritt unten
+      if (now) {                                           // playing now: magenta on top, progress below
         canvas.fillRect(x, y, 27, 2, C_MAGENTA);
         canvas.fillRect(x, y + 38, 27 * (chainBar + 1) / song.chainRep[i], 2, C_CYAN);
       }
@@ -485,7 +485,7 @@ static void drawSong() {
       snprintf(b, sizeof(b), "×%d", song.chainRep[i]);
       canvas.setTextColor(C_TEXT);
       canvas.drawCenterString(b, x + 14, y + 22);
-    } else if (i == n) {                                   // freier Platz zum Anhaengen
+    } else if (i == n) {                                   // free slot for appending
       canvas.drawRect(x, y, 27, 40, C_OUTSIDE);
       canvas.setTextColor(C_STEP);
       canvas.drawCenterString("+", x + 14, y + 14);
@@ -494,10 +494,10 @@ static void drawSong() {
   }
 
   canvas.setTextColor(C_TEXT);
-  if (songCursor < n) snprintf(b, sizeof(b), "Platz %d: Pattern %d, %d Takt%s", songCursor + 1,
-                               song.chainPat[songCursor] + 1, song.chainRep[songCursor], song.chainRep[songCursor] > 1 ? "e" : "");
-  else if (n < CHAIN_MAX) snprintf(b, sizeof(b), "1-8 = Pattern anhängen");
-  else snprintf(b, sizeof(b), "Kette voll (16 Plätze)");
+  if (songCursor < n) snprintf(b, sizeof(b), "Slot %d: pattern %d, %d bar%s", songCursor + 1,
+                               song.chainPat[songCursor] + 1, song.chainRep[songCursor], song.chainRep[songCursor] > 1 ? "s" : "");
+  else if (n < CHAIN_MAX) snprintf(b, sizeof(b), "1-8 = append pattern");
+  else snprintf(b, sizeof(b), "Chain full (16 slots)");
   canvas.drawString(b, 3, 106);
 
   canvas.drawFastHLine(0, 119, 240, C_CYAN);
@@ -506,7 +506,7 @@ static void drawSong() {
     canvas.drawString(msg, 3, 122);
   } else {
     canvas.setTextColor(C_STEP);
-    canvas.drawString("-/= Takte  Del  Tab an/aus  Esc", 3, 122);
+    canvas.drawString("-/= bars  Del  Tab on/off  Esc", 3, 122);
   }
   canvas.pushSprite(0, 0);
 }
@@ -515,7 +515,7 @@ static void drawGrid() {
   canvas.fillSprite(TFT_BLACK);
   char b[48];
 
-  // Kopfzeile: Play-Symbol, Pattern (Magenta), Tempo, Swing, Lautstaerke; cyane Linie darunter
+  // Header: play symbol, pattern (magenta), tempo, swing, volume; cyan line below
   if (playing) canvas.fillTriangle(2, 2, 2, 10, 8, 6, C_CYAN);
   else canvas.fillRect(2, 3, 6, 6, C_STEP);
   int pp = pendingPat;
@@ -535,12 +535,12 @@ static void drawGrid() {
   canvas.drawRightString(b, 238, 0);
   canvas.drawFastHLine(0, 12, 240, C_CYAN);
 
-  // Raster: 8 Spuren a 13 px
+  // Grid: 8 tracks of 13 px each
   Pattern& Pt = P();
   for (int t = 0; t < NT; t++) {
     int y = 13 + t * 13;
     bool muted = song.tp[t].mute;
-    if (t == curTrack) {                                   // aktive Spur: Magenta-Kante links
+    if (t == curTrack) {                                   // active track: magenta edge on the left
       canvas.fillRect(0, y, 20, 12, C_SEL);
       canvas.fillRect(0, y, 2, 12, C_MAGENTA);
     }
@@ -554,7 +554,7 @@ static void drawGrid() {
       const Step& st = Pt.s[t][s];
       if (st.on) {
         uint16_t col = muted ? C_MUTED : (st.on == 2 ? C_BRIGHT : C_STEP);
-        int in = st.prob & 3;                                // kleineres Kaestchen = geringere Wahrscheinlichkeit
+        int in = st.prob & 3;                                // smaller box = lower probability
         canvas.fillRect(sx + in, y + in, 12 - 2 * in, 12 - 2 * in, col);
         for (int r = 1; r < st.rat; r++) canvas.fillRect(sx + 2 + (r - 1) * 3, y + 9, 2, 2, TFT_BLACK);
       }
@@ -562,7 +562,7 @@ static void drawGrid() {
     }
   }
 
-  // Fusszeile: cyane Linie, Spurname Magenta + Parameter, oder kurze Meldung
+  // Footer: cyan line, track name in magenta + parameters, or a short message
   canvas.drawFastHLine(0, 119, 240, C_CYAN);
   if (millis() < msgUntil) {
     canvas.setTextColor(C_BRIGHT);
@@ -590,7 +590,7 @@ void setup() {
 
   engineInit();
   loadSong();
-  zub::begin();
+  acc::begin();
 
   M5.Speaker.begin();
   M5.Speaker.setVolume(song.vol);
@@ -616,6 +616,6 @@ void loop() {
   handleKeys();
   static uint32_t last = 0;
   if (millis() - last >= 33) { last = millis(); draw(); }
-  zub::tick();
+  acc::tick();
   delay(1);
 }

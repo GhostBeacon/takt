@@ -1,24 +1,24 @@
-// Takt – Klangerzeugung + Sequencer (laeuft im Audio-Task)
+// Takt – sound synthesis + sequencer (runs in the audio task)
 #pragma once
 #include <Arduino.h>
 #include <math.h>
 #include <string.h>
 
-constexpr int SR = 44100;          // Samplerate
-constexpr int NT = 8;              // Spuren
-constexpr int NS = 16;             // Steps
-constexpr int NP = 8;              // Patterns
+constexpr int SR = 44100;          // sample rate
+constexpr int NT = 8;              // tracks
+constexpr int NS = 16;             // steps
+constexpr int NP = 8;              // patterns
 constexpr uint32_t MAGIC = 0xD5A70003;
-constexpr int CHAIN_MAX = 16;      // Song-Modus: Plaetze in der Pattern-Kette
+constexpr int CHAIN_MAX = 16;      // song mode: slots in the pattern chain
 
 enum { BD, SD, CP, CH, OH, LT, HT, CB };
 static const char* TRACK_NAMES[NT] = {"BD", "SD", "CP", "CH", "OH", "LT", "HT", "CB"};
 static const uint8_t PROB_PCT[4] = {100, 75, 50, 25};
 
-// ---------------------------------------------------------------- Daten
-struct Step { uint8_t on, prob, rat; };          // on: 0 aus, 1 an, 2 Accent | prob: Index in PROB_PCT | rat: 1..4
+// ---------------------------------------------------------------- Data
+struct Step { uint8_t on, prob, rat; };          // on: 0 off, 1 on, 2 accent | prob: index into PROB_PCT | rat: 1..4
 struct Pattern { Step s[NT][NS]; uint8_t len[NT]; };
-struct TrackParams { int8_t tune; uint8_t decay, level, mute; }; // tune -12..12 HT, decay 1..30 (/10), level 0..10
+struct TrackParams { int8_t tune; uint8_t decay, level, mute; }; // tune -12..12 semitones, decay 1..30 (/10), level 0..10
 struct Song {
   uint32_t magic;
   Pattern pat[NP];
@@ -26,32 +26,32 @@ struct Song {
   uint16_t bpm;
   uint8_t swing;   // 50..75 %
   uint8_t vol;     // 0..255
-  uint8_t chainLen;                 // Song-Modus: Anzahl belegter Plaetze
-  uint8_t chainPat[CHAIN_MAX];      // Pattern 0..7 je Platz
-  uint8_t chainRep[CHAIN_MAX];      // Wiederholungen 1..8 je Platz
+  uint8_t chainLen;                 // song mode: number of slots in use
+  uint8_t chainPat[CHAIN_MAX];      // pattern 0..7 per slot
+  uint8_t chainRep[CHAIN_MAX];      // repeats 1..8 per slot
 };
 
 static Song song;
 
-// Zustand, den UI und Audio-Task teilen
+// State shared by the UI and the audio task
 static volatile bool playing = false;
-static volatile int cmd = 0;              // 1 = Start, 2 = Stop
+static volatile int cmd = 0;              // 1 = start, 2 = stop
 static volatile int curPat = 0;
 static volatile int pendingPat = -1;
-static volatile uint32_t padMask = 0;     // Vorhör-Trigger aus der UI
+static volatile uint32_t padMask = 0;     // audition triggers from the UI
 static volatile uint8_t uiStep[NT];
-static volatile bool songMode = false;    // Kette statt Einzel-Pattern abspielen
-static volatile int chainPos = 0;         // aktueller Platz in der Kette
-static volatile int chainBar = 0;         // gespielte Takte auf diesem Platz
-static volatile int songJump = -1;        // UI: an der naechsten Eins zu diesem Platz springen
-static volatile uint32_t hitMask = 0;     // fuer Hex/OLED: Bit t = Spur t geschlagen, Bit 8+t = mit Accent
-static volatile uint8_t uiGstep = 0;      // globaler Step (0-15) fuer die Laufposition auf dem Hex
+static volatile bool songMode = false;    // play the chain instead of a single pattern
+static volatile int chainPos = 0;         // current slot in the chain
+static volatile int chainBar = 0;         // bars played in this slot
+static volatile int songJump = -1;        // UI: jump to this slot on the next downbeat
+static volatile uint32_t hitMask = 0;     // for Hex/OLED: bit t = track t was hit, bit 8+t = with accent
+static volatile uint8_t uiGstep = 0;      // global step (0-15) for the play position on the Hex
 
 static inline void noteHit(int t, float vel) {
   __atomic_fetch_or(&hitMask, (1u << t) | (vel >= 0.95f ? 1u << (8 + t) : 0u), __ATOMIC_RELAXED);
 }
 
-// ---------------------------------------------------------------- DSP-Helfer
+// ---------------------------------------------------------------- DSP helpers
 static float sineLUT[1024];
 static inline float fsin(float ph) { return sineLUT[(int)(ph * 1024.0f) & 1023]; }
 
@@ -69,15 +69,15 @@ static inline float softclip(float x) {
 
 static const float A_HP_SNARE = 1.0f / (1.0f + 2.0f * PI * 1500.0f / SR);
 static const float A_HP_HAT   = 1.0f / (1.0f + 2.0f * PI * 7000.0f / SR);
-static const float HAT_F[6]   = {205.3f, 304.4f, 369.6f, 522.7f, 540.0f, 800.0f}; // 808-Metallic-Oszillatoren
+static const float HAT_F[6]   = {205.3f, 304.4f, 369.6f, 522.7f, 540.0f, 800.0f}; // 808 metallic oscillators
 
-// ---------------------------------------------------------------- Stimmen
+// ---------------------------------------------------------------- Voices
 struct Voice {
   bool active; uint32_t t; float vel;
   float ph[6];
   float env, envC, env2, env2C, penv, penvC, pamt, base;
-  float y1, x1, y2, x2;   // Hochpass-Zustände
-  float lp, bp, f, q;     // State-Variable-Filter
+  float y1, x1, y2, x2;   // high-pass state
+  float lp, bp, f, q;     // state-variable filter
 };
 static Voice voices[NT];
 
@@ -109,7 +109,7 @@ static void trigger(int tr, float vel) {
     case HT: v.base = 140 * tm; v.envC = coef(0.25f * dm); v.penv = 1; v.penvC = coef(0.05f); v.pamt = 0.7f; break;
     case CB: v.base = tm; v.envC = coef(0.012f); v.env2 = 1; v.env2C = coef(0.10f * dm); setSVF(v, 1700 * tm, 0.9f); break;
   }
-  if (tr == CH && voices[OH].active) voices[OH].envC = coef(0.005f);  // Closed HH würgt Open HH ab
+  if (tr == CH && voices[OH].active) voices[OH].envC = coef(0.005f);  // closed hat chokes the open hat
 }
 
 static float renderVoice(int tr, Voice& v) {
@@ -118,7 +118,7 @@ static float renderVoice(int tr, Voice& v) {
     case BD: case LT: case HT: {
       v.ph[0] = wrap(v.ph[0] + v.base * (1.0f + v.pamt * v.penv) / SR);
       s = fsin(v.ph[0]) * v.env;
-      if (tr == BD && v.t < 90) s += noise() * 0.25f * (1.0f - v.t / 90.0f);   // Klick
+      if (tr == BD && v.t < 90) s += noise() * 0.25f * (1.0f - v.t / 90.0f);   // click
       v.penv *= v.penvC;
       break;
     }
@@ -130,8 +130,8 @@ static float renderVoice(int tr, Voice& v) {
       break;
     }
     case CP: {
-      if (v.t == 441 || v.t == 882) v.env = 1.0f;    // drei Klatscher im 10-ms-Abstand
-      if (v.t == 1323) v.env2 = 1.0f;                // danach Hallfahne
+      if (v.t == 441 || v.t == 882) v.env = 1.0f;    // three claps 10 ms apart
+      if (v.t == 1323) v.env2 = 1.0f;                // then the reverb tail
       float n = svfBP(v, noise());
       s = n * (v.t < 1323 ? v.env : v.env2) * 2.0f;
       v.env2 *= v.env2C;
@@ -170,14 +170,14 @@ static Ratchet rat[NT];
 static int gstep = 0;
 static int tpos[NT];
 static double toNext = 0;
-static bool firstStep = true;             // erster Step nach Start zaehlt nicht als Taktende
+static bool firstStep = true;             // the first step after start does not count as the end of a bar
 
 static void resetPositions() {
   gstep = 0;
   for (int t = 0; t < NT; t++) { tpos[t] = 0; rat[t].left = 0; }
 }
 
-// Song-Modus: am Taktanfang Kette weiterschalten (oder an einen Platz springen)
+// Song mode: advance the chain at the start of a bar (or jump to a slot)
 static void songBar() {
   int n = song.chainLen;
   if (n <= 0) return;
@@ -190,7 +190,7 @@ static void songBar() {
     if (chainPos >= n) chainPos = 0;
     if (++chainBar >= song.chainRep[chainPos]) {
       chainBar = 0;
-      chainPos = (chainPos + 1) % n;             // am Ende von vorn
+      chainPos = (chainPos + 1) % n;             // start over at the end
     }
   }
   if (chainPos >= n) chainPos = 0;
@@ -202,7 +202,7 @@ static void songBar() {
 static void doStep() {
   if (gstep == 0) {
     if (songMode && song.chainLen > 0) songBar();
-    else if (pendingPat >= 0) {                  // Patternwechsel am Taktanfang
+    else if (pendingPat >= 0) {                  // pattern change at the start of the bar
       curPat = pendingPat; pendingPat = -1;
       for (int t = 0; t < NT; t++) tpos[t] = 0;
     }
@@ -231,7 +231,7 @@ static void doStep() {
       }
     }
     int len = P.len[t] < 1 ? 1 : P.len[t];
-    tpos[t] = (p + 1) % len;                     // eigene Länge je Spur = Polymeter
+    tpos[t] = (p + 1) % len;                     // own length per track = polymeter
   }
   uiGstep = gstep;
   gstep = (gstep + 1) % NS;
@@ -252,7 +252,7 @@ static void render(int16_t* out, int n) {
     else { playing = false; for (int t = 0; t < NT; t++) rat[t].left = 0; }
   }
   if (!playing && pendingPat >= 0) { curPat = pendingPat; pendingPat = -1; }
-  if (!playing && songJump >= 0 && songMode && song.chainLen > 0) {  // gestoppt: Platz sofort anzeigen
+  if (!playing && songJump >= 0 && songMode && song.chainLen > 0) {  // stopped: show the slot at once
     chainPos = songJump < song.chainLen ? songJump : 0;
     chainBar = 0;
     curPat = song.chainPat[chainPos] & 7;
@@ -280,7 +280,7 @@ static void render(int16_t* out, int n) {
   }
 }
 
-// ---------------------------------------------------------------- Default-Song
+// ---------------------------------------------------------------- Default song
 static void defaultSong() {
   memset(&song, 0, sizeof(song));
   song.magic = MAGIC;
@@ -292,14 +292,14 @@ static void defaultSong() {
       song.pat[p].len[t] = NS;
       for (int s = 0; s < NS; s++) song.pat[p].s[t][s] = {0, 0, 1};
     }
-  // Pattern 1: Grundbeat
+  // Pattern 1: basic beat
   Pattern& a = song.pat[0];
   for (int s : {0, 4, 8, 12}) a.s[BD][s].on = 1;
   a.s[BD][0].on = 2;
   for (int s : {4, 12}) a.s[SD][s].on = 1;
   for (int s = 0; s < NS; s += 2) a.s[CH][s].on = (s % 4 == 0) ? 2 : 1;
   a.s[OH][14].on = 1;
-  // Pattern 2: Variation mit Ratchets, Probability und Polymeter
+  // Pattern 2: variation with ratchets, probability and polymeter
   Pattern& b = song.pat[1];
   memcpy(&b, &a, sizeof(Pattern));
   b.s[BD][10].on = 1; b.s[BD][10].prob = 2;
@@ -307,7 +307,7 @@ static void defaultSong() {
   b.s[CH][14].rat = 3;
   b.s[CB][0].on = 1; b.s[CB][3].on = 1; b.s[CB][6].on = 1; b.len[CB] = 7;
   b.s[LT][13].on = 1; b.s[HT][15].on = 1;
-  // Demo-Kette: 3x Grundbeat, 1x Variation
+  // Demo chain: 3x basic beat, 1x variation
   song.chainLen = 2;
   song.chainPat[0] = 0; song.chainRep[0] = 3;
   song.chainPat[1] = 1; song.chainRep[1] = 1;

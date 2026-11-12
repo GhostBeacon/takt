@@ -1,4 +1,4 @@
-// Eingebettete Schriften mit Umlauten (siehe fonts.c)
+// Embedded fonts with Latin-1 characters (see fonts.c)
 #pragma once
 
 #include <stdint.h>
